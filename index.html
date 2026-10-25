@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f2a43">
+<title>ISO a USB</title>
+<style>
+:root{
+  --paper:#0f2a43; --raise:#163a5c; --line:#2f5879; --grid:rgba(140,185,220,.07);
+  --ink:#eaf3f8; --dim:#9db8ca; --amber:#ffc247; --amber-ink:#2a1d00; --ok:#62d6a8; --bad:#ff7059;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --data:ui-monospace,"SFMono-Regular","Droid Sans Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;overflow:hidden;color:var(--ink);font:15px/1.45 var(--ui);
+  background:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/28px 28px,
+             linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/28px 28px,var(--paper)}
+header{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 16px 8px}
+h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.01em}
+h2{margin:22px 0 8px;font-size:15px;font-weight:600;color:var(--dim)}
+.chips{margin-left:auto;display:flex;gap:6px}
+.chip{display:flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:99px;font-size:12px;color:var(--dim)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.chip.ok i{background:var(--ok)} .chip.warn i{background:var(--amber)}
+.devbar{padding:0 16px 10px}
+select,input[type=text]{width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--raise);color:var(--ink);font:inherit}
+.devrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+#devState{flex:1;min-width:0;font-size:13px;color:var(--dim)}
+.btn{min-height:44px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--raise);color:var(--ink);font:inherit;font-weight:600}
+.btn.sm{min-height:36px;padding:6px 10px;font-size:13px}
+.btn.pri{background:var(--amber);border-color:var(--amber);color:var(--amber-ink)}
+.btn.bad{background:var(--bad);border-color:var(--bad);color:#2b0700}
+.btn:disabled{opacity:.45}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.prog{padding:0 16px 8px}
+.map{display:flex;gap:2px}
+.map i{flex:1;height:22px;border:1px solid var(--line);border-radius:3px;background:linear-gradient(90deg,var(--amber) calc(var(--f,0)*100%),transparent 0)}
+.map.ver i{background:linear-gradient(90deg,var(--ok) calc(var(--f,0)*100%),transparent 0)}
+.mapcap{display:flex;align-items:center;gap:10px;margin-top:6px;min-height:36px;font-size:13px;color:var(--dim)}
+#phase{color:var(--ink);font-weight:600}
+#speed{flex:1;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#banner{display:block;width:calc(100% - 32px);margin:0 16px 8px;padding:10px 12px;text-align:left;border:1px solid var(--amber);border-radius:8px;background:transparent;color:var(--amber);font:inherit;font-size:13px}
+main{flex:1;overflow:auto;padding:0 16px 20px}
+section>p{margin:8px 0}
+.file{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);border-radius:8px}
+.file b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file span{color:var(--dim);white-space:nowrap}
+.warn{margin:8px 0;padding:10px 12px;border-left:3px solid var(--amber);background:rgba(255,194,71,.08);font-size:13px}
+.hint{margin:6px 0 0;font-size:12px;color:var(--dim)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 10px;font-size:14px}
+.kv dt{color:var(--dim)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.data{font-family:var(--data);font-size:12px}
+pre.data{margin:8px 0 0;white-space:pre-wrap}
+.chk{display:flex;align-items:center;gap:10px;margin:14px 0;min-height:44px}
+.chk input{width:22px;height:22px;accent-color:var(--amber)}
+.actions{display:flex;gap:10px;margin-top:6px}
+.actions .btn{flex:1}
+.col{flex-direction:column}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;min-height:44px;border:0;border-right:1px solid var(--line);background:transparent;color:var(--dim);font:inherit;font-weight:600}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--raise);color:var(--ink);box-shadow:inset 0 -3px 0 var(--amber)}
+.row2{display:flex;gap:8px}.row2 select{flex:1}
+.row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row .t{flex:1;min-width:0} .row .t b{display:block} .row .t small{color:var(--dim)}
+.row .st{font-size:13px;color:var(--dim);text-align:right}
+.row.ok .st{color:var(--ok)} .row.warn .st{color:var(--amber)}
+.log{height:180px;overflow:auto;padding:8px;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;font:12px/1.5 var(--data);white-space:pre-wrap}
+.log .bad{color:var(--bad)} .log .ok{color:var(--ok)}
+nav{display:flex;border-top:1px solid var(--line);background:var(--paper);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;min-height:54px;border:0;background:transparent;color:var(--dim);font:inherit;font-weight:600}
+nav button[aria-current=true]{color:var(--ink);box-shadow:inset 0 3px 0 var(--amber)}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(70px + env(safe-area-inset-bottom));padding:12px 14px;border-radius:8px;background:var(--ink);color:var(--paper);font-weight:600;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .2s,transform .2s}
+#toast.show{opacity:1;transform:none}
+#toast.bad{background:var(--bad);color:#2b0700}
+#modal{position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:rgba(5,15,25,.72)}
+#modal .box{width:100%;max-width:420px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+#modal h3{margin:0 0 8px;font-size:18px}
+#mB{margin:0 0 16px;color:var(--dim);white-space:pre-line}
+body.busy .btn:not(#btnCancel),body.busy .seg button,body.busy select{pointer-events:none;opacity:.5}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ISO a USB</h1>
+  <div class="chips">
+    <span class="chip" id="cFiles"><i></i>Archivos</span>
+    <span class="chip" id="cZ"><i></i>Shizuku</span>
+  </div>
+</header>
+
+<div class="devbar">
+  <select id="dev" aria-label="Dispositivo USB"></select>
+  <div class="devrow">
+    <span id="devState">Buscando USB…</span>
+    <button class="btn sm" id="btnPerm" hidden>Dar permiso</button>
+    <button class="btn sm" id="btnRef">Actualizar</button>
+    <button class="btn sm" id="btnEject">Expulsar</button>
+  </div>
+</div>
+
+<div class="prog">
+  <div class="map" id="map" aria-hidden="true"></div>
+  <div class="mapcap">
+    <span id="phase" aria-live="polite">Listo</span>
+    <span id="speed"></span>
+    <button class="btn sm" id="btnCancel" hidden>Cancelar</button>
+  </div>
+</div>
+
+<button id="banner" hidden>Faltan permisos. Toca aquí para configurarlos ahora.</button>
+
+<main>
+  <p class="warn" id="webNote" hidden>Esta pantalla solo funciona dentro de la app instalada (APK), no en el navegador.</p>
+
+  <section id="tab-grabar">
+    <h2>Imagen</h2>
+    <div class="file"><b id="isoName">Ninguna imagen elegida</b><span id="isoSize"></span></div>
+    <p class="warn" id="isoWarn" hidden></p>
+    <button class="btn" id="btnIso">Elegir ISO</button>
+
+    <h2>Método de grabación</h2>
+    <div class="seg" id="wrMode">
+      <button data-v="raw" aria-pressed="true">Copia exacta</button>
+      <button data-v="extract" aria-pressed="false">Extraer archivos</button>
+    </div>
+    <p class="hint" id="wrHint"></p>
+    <div id="wrExtra" hidden>
+      <h2>Esquema de particiones</h2>
+      <div class="seg" id="wrScheme">
+        <button data-v="mbr" aria-pressed="true">MBR</button>
+        <button data-v="gpt" aria-pressed="false">GPT</button>
+      </div>
+      <p class="hint">MBR funciona en casi todos los equipos con UEFI. Usa GPT solo si tu equipo lo pide.</p>
+    </div>
+
+    <h2>USB seleccionado</h2>
+    <dl class="kv">
+      <dt>Capacidad</dt><dd id="kCap">sin leer</dd>
+      <dt>Modelo</dt><dd id="kModel">sin leer</dd>
+      <dt>Ruta</dt><dd id="kPath" class="data">sin dispositivo</dd>
+    </dl>
+    <button class="btn" id="btnInfo">Leer capacidad</button>
+    <p class="hint">Leer la capacidad desmonta el USB del sistema. Vuelve a conectarlo después para montarlo.</p>
+
+    <label class="chk" id="verifyRow"><input type="checkbox" id="verify" checked>Verificar al terminar con SHA-256</label>
+    <div class="actions"><button class="btn pri" id="btnWrite">Grabar en el USB</button></div>
+  </section>
+
+  <section id="tab-format" hidden>
+    <h2>Método</h2>
+    <div class="seg" id="fmMode">
+      <button data-v="usb" aria-pressed="true">Directo por USB</button>
+      <button data-v="sm" aria-pressed="false">Sistema con Shizuku</button>
+    </div>
+
+    <div id="fmUsb">
+      <h2>Esquema de particiones</h2>
+      <div class="seg" id="fmScheme">
+        <button data-v="mbr" aria-pressed="true">MBR</button>
+        <button data-v="gpt" aria-pressed="false">GPT</button>
+      </div>
+      <h2>Sistema de archivos</h2>
+      <select id="fs"><option>FAT32</option></select>
+      <h2>Etiqueta</h2>
+      <input id="label" type="text" value="USB" maxlength="11" autocapitalize="characters" autocomplete="off">
+      <p class="hint">Escribe la tabla de particiones y FAT32 directamente en el USB, sin Shizuku. Para exFAT usa el método del sistema.</p>
+    </div>
+
+    <div id="fmSm" hidden>
+      <h2>Disco</h2>
+      <div class="row2"><select id="disk"></select><button class="btn" id="btnDisks">Actualizar</button></div>
+      <pre class="data" id="smVols"></pre>
+      <p class="hint">Android crea una partición y la formatea como FAT32 o exFAT según el tamaño. Necesita Shizuku activo con permiso.</p>
+    </div>
+
+    <div class="actions" style="margin-top:18px"><button class="btn bad" id="btnFmt">Formatear</button></div>
+  </section>
+
+  <section id="tab-copiar" hidden>
+    <p>Para un USB que ya tiene Ventoy, o cualquier USB que Android haya montado. Copia la ISO como archivo y no toca el arranque.</p>
+    <h2>Volumen montado</h2>
+    <div class="row2"><select id="vol"></select><button class="btn" id="btnVols">Actualizar</button></div>
+    <h2>Imagen</h2>
+    <div class="file"><b id="isoName2">Ninguna imagen elegida</b><span id="isoSize2"></span></div>
+    <button class="btn" id="btnIso2">Elegir ISO</button>
+    <div class="actions" style="margin-top:18px"><button class="btn pri" id="btnCopy">Copiar al volumen</button></div>
+    <p class="hint">Necesita el permiso «Acceso a todos los archivos». FAT32 no admite archivos de más de 4 GB.</p>
+  </section>
+
+  <section id="tab-ajustes" hidden>
+    <h2>Permisos</h2>
+    <div id="rows"></div>
+    <div class="actions col" style="margin-top:14px">
+      <button class="btn pri" id="btnSetup">Configurar todo</button>
+      <button class="btn" id="btnAppSet">Ajustes de la app</button>
+      <button class="btn" id="btnDevSet">Opciones de desarrollador</button>
+    </div>
+    <h2>Registro</h2>
+    <div class="log" id="log"></div>
+    <button class="btn" id="btnLogCopy">Copiar registro</button>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="grabar" aria-current="true">Grabar</button>
+  <button data-tab="format" aria-current="false">Formatear</button>
+  <button data-tab="copiar" aria-current="false">Copiar</button>
+  <button data-tab="ajustes" aria-current="false">Ajustes</button>
+</nav>
+
+<div id="toast" role="status"></div>
+<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mT">
+  <div class="box">
+    <h3 id="mT"></h3>
+    <p id="mB"></p>
+    <div class="actions"><button class="btn" id="mNo">Cancelar</button><button class="btn pri" id="mOk">Aceptar</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const Cap = window.Capacitor;
+const native = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+const P = native ? Cap.registerPlugin('IsoUsb') : null;
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+const S = { devs: [], info: {}, iso: null, busy: false, setup: false, asked: {}, st: null, bannerOff: false };
+
+const fmtB = b => b >= 2 ** 30 ? (b / 2 ** 30).toFixed(2) + ' GB' : b >= 2 ** 20 ? (b / 2 ** 20).toFixed(1) + ' MB' : b + ' B';
+const devName = d => ((d.manufacturer + ' ' + d.product).trim() || 'USB') + ' (' + d.vid + ':' + d.pid + ')';
+const cur = () => S.devs.find(d => d.id === $('#dev').value);
+const seg = id => $('#' + id).querySelector('[aria-pressed=true]').dataset.v;
+
+function log(t, cls) {
+  const el = $('#log'), d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = new Date().toLocaleTimeString() + '  ' + t;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+let tt;
+function toast(t, bad) {
+  const e = $('#toast');
+  e.textContent = t;
+  e.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(tt);
+  tt = setTimeout(() => { e.className = ''; }, 4200);
+}
+async function api(fn, args) {
+  if (!P) throw new Error('Abre la app instalada (APK), no el navegador');
+  try {
+    return await P[fn](args || {});
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    if (!/cancelad/i.test(m)) log(fn + ': ' + m, 'bad');
+    throw new Error(m);
+  }
+}
+function ask(title, body, okText, danger, noText) {
+  return new Promise(res => {
+    $('#mT').textContent = title;
+    $('#mB').textContent = body;
+    const ok = $('#mOk'), no = $('#mNo');
+    ok.textContent = okText;
+    ok.className = 'btn ' + (danger ? 'bad' : 'pri');
+    no.textContent = noText || 'Cancelar';
+    $('#modal').hidden = false;
+    ok.focus();
+    const end = v => { $('#modal').hidden = true; ok.onclick = no.onclick = null; res(v); };
+    ok.onclick = () => end(true);
+    no.onclick = () => end(false);
+  });
+}
+
+/* ---------- mapa de sectores (progreso) ---------- */
+const N = 48, cells = [];
+function buildMap() {
+  const m = $('#map');
+  for (let i = 0; i < N; i++) { const c = document.createElement('i'); m.appendChild(c); cells.push(c); }
+}
+function setMap(f, phase) {
+  $('#map').className = 'map' + (phase === 'verify' ? ' ver' : '');
+  const x = Math.max(0, Math.min(1, f)) * N;
+  cells.forEach((c, i) => c.style.setProperty('--f', Math.max(0, Math.min(1, x - i)).toFixed(3)));
+}
+async function job(label, fn) {
+  if (S.busy) return;
+  S.busy = true;
+  document.body.classList.add('busy');
+  $('#btnCancel').hidden = false;
+  setMap(0, 'write');
+  $('#phase').textContent = label + '…';
+  $('#speed').textContent = '';
+  try { await fn(); }
+  catch (e) { toast(e.message, true); $('#phase').textContent = 'Error: ' + e.message; }
+  finally {
+    S.busy = false;
+    document.body.classList.remove('busy');
+    $('#btnCancel').hidden = true;
+    try { await loadDevices(); } catch (e) {}
+  }
+}
+
+/* ---------- pestañas y controles segmentados ---------- */
+function show(id) {
+  $$('nav button').forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === id)));
+  $$('main section').forEach(s => { s.hidden = s.id !== 'tab-' + id; });
+  if (id === 'copiar') loadVolumes().catch(() => {});
+  if (id === 'format' && seg('fmMode') === 'sm') loadDisks();
+  if (id === 'ajustes') refreshStatus().catch(() => {});
+}
+$$('nav button').forEach(b => { b.onclick = () => show(b.dataset.tab); });
+$$('.seg').forEach(g => g.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  [...g.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  g.dispatchEvent(new Event('change'));
+}));
+$('#fmMode').addEventListener('change', () => {
+  const sm = seg('fmMode') === 'sm';
+  $('#fmUsb').hidden = sm;
+  $('#fmSm').hidden = !sm;
+  if (sm) loadDisks();
+});
+
+/* ---------- dispositivos USB ---------- */
+function paintDev() {
+  const d = cur(), i = d && S.info[d.id];
+  $('#btnPerm').hidden = !(d && !d.perm);
+  $('#devState').textContent = !d ? 'Conecta un USB por OTG y pulsa Actualizar'
+    : d.perm ? 'Permiso USB concedido' : 'Falta el permiso USB';
+  $('#kCap').textContent = i ? fmtB(i.bytes) : 'sin leer';
+  let model = 'sin leer';
+  if (i) model = ((i.vendor + ' ' + i.product).trim() || 'sin nombre') + (i.rev ? ' ' + i.rev : '');
+  else if (d && (d.manufacturer + d.product).trim()) model = (d.manufacturer + ' ' + d.product).trim();
+  $('#kModel').textContent = model;
+  $('#kPath').textContent = d ? d.id : 'sin dispositivo';
+  paintRows();
+}
+async function loadDevices() {
+  const r = await api('listDevices');
+  S.devs = r.devices;
+  const sel = $('#dev'), prev = sel.value;
+  sel.innerHTML = '';
+  if (!S.devs.length) sel.add(new Option('Sin USB conectado', ''));
+  S.devs.forEach(d => sel.add(new Option(devName(d), d.id)));
+  if (S.devs.some(d => d.id === prev)) sel.value = prev;
+  paintDev();
+}
+$('#dev').onchange = paintDev;
+$('#btnRef').onclick = () => loadDevices().then(() => toast('Lista actualizada')).catch(e => toast(e.message, true));
+$('#btnPerm').onclick = async () => {
+  const d = cur();
+  if (!d) return;
+  try {
+    const r = await api('requestUsb', { id: d.id });
+    toast(r.granted ? 'Permiso USB concedido' : 'Permiso USB rechazado', !r.granted);
+    await loadDevices();
+  } catch (e) { toast(e.message, true); }
+};
+$('#btnInfo').onclick = async () => {
+  const d = cur();
+  if (!d) return toast('Conecta y elige un USB', true);
+  if (!d.perm) return toast('Primero da el permiso USB', true);
+  await job('Leyendo USB', async () => {
+    const r = await api('deviceInfo', { id: d.id });
+    S.info[d.id] = r;
+    $('#phase').textContent = 'Listo';
+    log('USB: ' + (r.vendor + ' ' + r.product).trim() + ', ' + fmtB(r.bytes) + ', bloque ' + r.blockSize + ' B', 'ok');
+  });
+};
+
+/* ---------- ISO ---------- */
+function paintIso() {
+  const i = S.iso;
+  ['isoName', 'isoName2'].forEach(id => { $('#' + id).textContent = i ? i.name : 'Ninguna imagen elegida'; });
+  ['isoSize', 'isoSize2'].forEach(id => { $('#' + id).textContent = i ? fmtB(i.size) : ''; });
+  paintMode();
+}
+function setMode(v) {
+  $$('#wrMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+}
+function paintMode() {
+  const i = S.iso, ex = seg('wrMode') === 'extract';
+  $('#wrExtra').hidden = !ex;
+  $('#verifyRow').hidden = ex;
+  $('#wrHint').textContent = ex
+    ? 'Formatea el USB en FAT32 y copia los archivos de la ISO, como hace Rufus con Windows. Arranca solo en equipos con UEFI. Si install.wim pesa más de 4 GB, se divide en install.swm.'
+    : 'Copia byte a byte. Sirve para ISOs híbridas (casi todo Linux) y arranca en BIOS y UEFI.';
+  let w = '';
+  if (i) {
+    if (ex && !i.udf) w = 'No pude leer esta imagen como UDF, así que no se pueden extraer sus archivos.';
+    else if (ex && !i.efi) w = 'Esta ISO no trae cargador UEFI (efi/boot/bootx64.efi), como Windows 7 o más viejo. Extraída no arrancará.';
+    else if (!ex && !i.hybrid) w = 'Esta imagen no es híbrida (como las de Windows): con copia exacta no arrancará. Usa «Extraer archivos».';
+  }
+  const el = $('#isoWarn');
+  el.textContent = w;
+  el.hidden = !w;
+}
+$('#wrMode').addEventListener('change', paintMode);
+async function pickIso() {
+  try {
+    S.iso = await api('pickIso');
+    setMode(S.iso.hybrid ? 'raw' : (S.iso.udf ? 'extract' : 'raw'));
+    paintIso();
+    log('ISO: ' + S.iso.name + ', ' + fmtB(S.iso.size) + (S.iso.hybrid ? ', híbrida (copia exacta)'
+      : S.iso.udf ? ', UDF' + (S.iso.windows ? ' de Windows' : '') + (S.iso.efi ? ' con cargador UEFI' : ' sin cargador UEFI') + ' (extraer archivos)'
+      : ', ni híbrida ni UDF'), S.iso.hybrid || (S.iso.udf && S.iso.efi) ? 'ok' : '');
+  } catch (e) { if (!/cancelad/i.test(e.message)) toast(e.message, true); }
+}
+$('#btnIso').onclick = pickIso;
+$('#btnIso2').onclick = pickIso;
+
+$('#btnWrite').onclick = async () => {
+  const d = cur();
+  if (!d) return toast('Conecta y elige un USB', true);
+  if (!d.perm) return toast('Primero da el permiso USB', true);
+  if (!S.iso) return toast('Elige una ISO', true);
+  if (seg('wrMode') === 'extract') {
+    if (!S.iso.udf) return toast('Esta imagen no se puede extraer (no es UDF)', true);
+    const ok2 = await ask('¿Extraer la ISO en este USB?',
+      'Se borrará todo el contenido de:\n' + devName(d) + '\n\nSe formateará en FAT32 y se copiarán los archivos de ' +
+      S.iso.name + ' (' + fmtB(S.iso.size) + ').\nArrancará solo en equipos con UEFI. Si install.wim pesa más de 4 GB se divide en install.swm.\n' +
+      'No desconectes el USB ni cierres la app.', 'Borrar y extraer', true);
+    if (!ok2) return;
+    await job('Copiando archivos', async () => {
+      delete S.info[d.id];
+      const r = await api('extractIso', { id: d.id, scheme: seg('wrScheme'), label: S.iso.windows ? 'WINDOWS' : 'ISO_USB' });
+      setMap(1, 'verify');
+      $('#phase').textContent = 'Listo: ' + r.files + ' archivos';
+      $('#speed').textContent = '';
+      log('Extraídos ' + r.files + ' archivos, ' + fmtB(r.bytes) + (r.parts ? '. install.wim dividido en ' + r.parts + ' partes .swm' : ''), 'ok');
+      toast('Listo. Arranca el equipo desde el USB en modo UEFI.');
+    });
+    return;
+  }
+  const ok = await ask('¿Grabar la imagen en este USB?',
+    'Se borrará todo el contenido de:\n' + devName(d) + '\n\nImagen: ' + S.iso.name + ' (' + fmtB(S.iso.size) +
+    ').\nNo desconectes el USB ni cierres la app mientras graba.', 'Borrar y grabar', true);
+  if (!ok) return;
+  await job('Grabando', async () => {
+    delete S.info[d.id];
+    const r = await api('writeIso', { id: d.id, verify: $('#verify').checked });
+    setMap(1, r.verified ? 'verify' : 'write');
+    $('#phase').textContent = r.verified ? 'Grabado y verificado' : 'Grabado';
+    $('#speed').textContent = '';
+    log('Grabado. SHA-256 ' + r.sha256, 'ok');
+    toast('Listo. Desconecta y vuelve a conectar el USB para probarlo.');
+  });
+};
+$('#btnCancel').onclick = () => { api('cancelJob').catch(() => {}); };
+
+/* ---------- formatear ---------- */
+async function loadDisks() {
+  const sel = $('#disk');
+  sel.innerHTML = '';
+  try {
+    const r = await api('shizukuDisks');
+    const disks = r.disks.split('\n').map(s => s.trim()).filter(s => /^disk:\d+,\d+$/.test(s));
+    disks.forEach(x => sel.add(new Option(x, x)));
+    if (!disks.length) sel.add(new Option('Sin discos USB detectados', ''));
+    $('#smVols').textContent = r.volumes.trim() || 'Sin volúmenes públicos montados';
+  } catch (e) {
+    sel.add(new Option('Shizuku no disponible', ''));
+    $('#smVols').textContent = '';
+  }
+}
+$('#btnDisks').onclick = loadDisks;
+$('#btnFmt').onclick = async () => {
+  if (seg('fmMode') === 'usb') {
+    const d = cur();
+    if (!d) return toast('Conecta y elige un USB', true);
+    if (!d.perm) return toast('Primero da el permiso USB', true);
+    const scheme = seg('fmScheme');
+    const ok = await ask('¿Formatear este USB?',
+      'Se borrará todo el contenido de:\n' + devName(d) + '\n\nSe creará una tabla ' + scheme.toUpperCase() +
+      ' con una partición FAT32.', 'Borrar y formatear', true);
+    if (!ok) return;
+    await job('Formateando', async () => {
+      delete S.info[d.id];
+      const r = await api('format', { id: d.id, scheme, label: $('#label').value });
+      setMap(1, 'verify');
+      $('#phase').textContent = 'Formateado';
+      log('Formateado: ' + r.scheme + ' + ' + r.fs + ', etiqueta ' + r.label, 'ok');
+      toast('Formateado. Desconecta y vuelve a conectar el USB.');
+    });
+  } else {
+    const disk = $('#disk').value;
+    if (!disk) return toast('No hay disco que formatear. Revisa Shizuku.', true);
+    const ok = await ask('¿Formatear con el sistema?',
+      'Android borrará todo el disco ' + disk + ' y lo formateará como FAT32 o exFAT.', 'Borrar y formatear', true);
+    if (!ok) return;
+    await job('Formateando', async () => {
+      const r = await api('shizukuFormat', { disk });
+      setMap(1, 'verify');
+      $('#phase').textContent = 'Formateado';
+      log('sm partition: ' + (r.out || 'ok'), 'ok');
+      toast('Formateado por el sistema');
+    });
+  }
+};
+
+/* ---------- copiar ISO a un volumen montado ---------- */
+async function loadVolumes() {
+  const r = await api('listVolumes'), sel = $('#vol');
+  sel.innerHTML = '';
+  r.volumes.forEach(v => sel.add(new Option((v.name || 'Volumen') + ', ' + (v.free >= 0 ? fmtB(v.free) + ' libres' : v.state), v.path)));
+  if (!r.volumes.length) sel.add(new Option('Sin volúmenes extraíbles montados', ''));
+}
+$('#btnVols').onclick = () => loadVolumes().then(() => toast('Lista actualizada')).catch(e => toast(e.message, true));
+$('#btnCopy').onclick = async () => {
+  const p = $('#vol').value;
+  if (!p) return toast('No hay un volumen montado', true);
+  if (!S.iso) return toast('Elige una ISO primero', true);
+  const ok = await ask('¿Copiar la ISO al volumen?',
+    S.iso.name + ' (' + fmtB(S.iso.size) + ') se copiará como archivo en:\n' + p, 'Copiar', false);
+  if (!ok) return;
+  await job('Copiando', async () => {
+    const r = await api('copyIso', { path: p });
+    setMap(1, 'verify');
+    $('#phase').textContent = 'Copiado';
+    log('Copiado en ' + r.file, 'ok');
+    toast('ISO copiada');
+  });
+};
+
+/* ---------- expulsar ---------- */
+$('#btnEject').onclick = async () => {
+  const d = cur();
+  const ok = await ask('¿Expulsar el USB?',
+    'Se vaciará la caché de escritura y se desmontará el USB. Cuando termine podrás retirarlo.', 'Expulsar', false);
+  if (!ok) return;
+  await job('Expulsando', async () => {
+    const r = await api('eject', { id: d ? d.id : '' });
+    $('#phase').textContent = 'Ya puedes retirarlo';
+    log(r.log.trim(), 'ok');
+    toast('Ya puedes retirar el USB');
+  });
+};
+
+/* ---------- permisos y configuración inicial ---------- */
+function paintRows() {
+  const s = S.st;
+  if (!s) return;
+  const z = s.shizuku, d = cur();
+  const rows = [
+    { title: 'Acceso a todos los archivos', desc: 'Para copiar ISOs como archivo a un USB montado.',
+      ok: s.allFiles, st: s.allFiles ? 'Concedido' : 'Pendiente',
+      b: s.allFiles ? null : ['Conceder', () => api('requestAllFiles')] },
+    { title: 'Shizuku', desc: 'Opcional. Formato del sistema y desmontaje limpio.',
+      ok: z.granted,
+      st: z.granted ? 'Activo (' + (z.uid === 0 ? 'root' : 'adb') + ')' : z.running ? 'Falta permiso' : z.installed ? 'Sin iniciar' : 'No instalado',
+      b: z.granted ? null : z.running ? ['Conceder', () => api('shizukuRequest')]
+        : [z.installed ? 'Abrir' : 'Descargar', () => api('shizukuOpen')] },
+    { title: 'USB por OTG', desc: 'Android pide permiso una vez por dispositivo.',
+      ok: !!(d && d.perm), st: d ? (d.perm ? 'Concedido' : 'Pendiente') : 'Sin dispositivo',
+      b: d && !d.perm ? ['Conceder', () => api('requestUsb', { id: d.id }).then(loadDevices)] : null }
+  ];
+  if (s.usbHost === false) rows.push({ title: 'USB host', desc: 'Este teléfono no expone USB host.', ok: false, st: 'No disponible', b: null });
+  const box = $('#rows');
+  box.innerHTML = '';
+  rows.forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'row ' + (r.ok ? 'ok' : 'warn');
+    const t = document.createElement('div');
+    t.className = 't';
+    const b = document.createElement('b');
+    b.textContent = r.title;
+    const sm = document.createElement('small');
+    sm.textContent = r.desc;
+    t.append(b, sm);
+    const st = document.createElement('span');
+    st.className = 'st';
+    st.textContent = r.st;
+    el.append(t, st);
+    if (r.b) {
+      const bt = document.createElement('button');
+      bt.className = 'btn sm';
+      bt.textContent = r.b[0];
+      bt.onclick = () => r.b[1]().catch(e => toast(e.message, true));
+      el.append(bt);
+    }
+    box.append(el);
+  });
+}
+async function refreshStatus() {
+  const s = await api('status');
+  S.st = s;
+  const z = s.shizuku;
+  $('#cFiles').className = 'chip ' + (s.allFiles ? 'ok' : 'warn');
+  $('#cZ').className = 'chip ' + (z.granted ? 'ok' : (z.running || z.installed) ? 'warn' : '');
+  $('#banner').hidden = S.bannerOff || !(!s.allFiles || (z.running && !z.granted));
+  paintRows();
+}
+async function setupFlow() {
+  await refreshStatus();
+  const s = S.st, z = s.shizuku;
+  const steps = [
+    [!s.allFiles, 'files', () => api('requestAllFiles'), 'Activa «Acceso a todos los archivos» y vuelve a la app.'],
+    [z.installed && !z.running, 'zrun', () => api('shizukuOpen'), 'Inicia Shizuku y vuelve a la app.'],
+    [z.running && !z.granted, 'zperm', () => api('shizukuRequest'), 'Acepta el permiso de Shizuku.']
+  ];
+  for (const [need, key, run, msg] of steps) {
+    if (need && !S.asked[key]) {
+      S.asked[key] = true;
+      log(msg);
+      toast(msg);
+      await run();
+      return;
+    }
+  }
+  await loadDevices();
+  const d = cur();
+  if (d && !d.perm && !S.asked.usb) {
+    S.asked.usb = true;
+    await api('requestUsb', { id: d.id });
+    await loadDevices();
+  }
+  if (!z.installed) log('Shizuku no está instalado. Es opcional: solo hace falta para formatear con el sistema y desmontar limpio.');
+  S.setup = false;
+  store.set('setupDone', '1');
+  log('Configuración terminada.', 'ok');
+  await refreshStatus();
+}
+function startSetup() {
+  S.setup = true;
+  S.asked = {};
+  S.bannerOff = true;
+  $('#banner').hidden = true;
+  show('ajustes');
+  setupFlow().catch(e => { S.setup = false; toast(e.message, true); });
+}
+async function firstRun() {
+  const ok = await ask('Configuración inicial',
+    'Para trabajar con USB externos la app necesita:\n\n• Acceso a todos los archivos, para copiar ISOs a un USB montado\n• Shizuku (opcional), para formatear con el sistema y desmontar limpio\n• Permiso USB, que Android pregunta al elegir el dispositivo\n\nTe llevo a cada pantalla de ajustes. Vuelve a la app al terminar cada paso.',
+    'Empezar', false, 'Ahora no');
+  if (ok) startSetup(); else store.set('setupDone', 'skip');
+}
+$('#btnSetup').onclick = startSetup;
+$('#banner').onclick = startSetup;
+$('#btnAppSet').onclick = () => api('openSettings', { kind: 'app' }).catch(e => toast(e.message, true));
+$('#btnDevSet').onclick = () => api('openSettings', { kind: 'dev' }).catch(e => toast(e.message, true));
+$('#btnLogCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#log').innerText); toast('Registro copiado'); }
+  catch (e) { toast('No se pudo copiar el registro', true); }
+};
+
+/* ---------- al volver desde los ajustes del sistema ---------- */
+let lastResume = 0;
+function onResume() {
+  const n = Date.now();
+  if (document.hidden || n - lastResume < 800) return;
+  lastResume = n;
+  refreshStatus().catch(() => {});
+  if (!S.busy) loadDevices().catch(() => {});
+  if (S.setup) setupFlow().catch(() => { S.setup = false; });
+}
+document.addEventListener('visibilitychange', onResume);
+window.addEventListener('focus', onResume);
+
+/* ---------- eventos nativos ---------- */
+if (P) {
+  P.addListener('progress', e => {
+    const f = e.total ? e.done / e.total : 0;
+    setMap(f, e.phase);
+    $('#phase').textContent = ({ write: 'Grabando', verify: 'Verificando', copy: 'Copiando', extract: 'Copiando archivos' }[e.phase] || e.phase) + ' ' + Math.floor(f * 100) + '%';
+    $('#speed').textContent = e.mbps.toFixed(1) + ' MB/s, ' + fmtB(e.done) + ' de ' + fmtB(e.total);
+  });
+  P.addListener('usb', () => { if (!S.busy) loadDevices().catch(() => {}); });
+  P.addListener('shizuku', () => {
+    refreshStatus().catch(() => {});
+    if (S.setup) setupFlow().catch(() => { S.setup = false; });
+  });
+}
+
+/* ---------- inicio ---------- */
+(async function init() {
+  buildMap();
+  setMap(0);
+  paintIso();
+  show('grabar');
+  window.addEventListener('error', e => log('JS: ' + e.message, 'bad'));
+  if (!native) {
+    $('#webNote').hidden = false;
+    $('#devState').textContent = 'Sin acceso a USB fuera de la app';
+    return;
+  }
+  try { await refreshStatus(); await loadDevices(); } catch (e) { toast(e.message, true); }
+  if (!store.get('setupDone')) firstRun();
+})();
+})();
+</script>
+</body>
+</html>

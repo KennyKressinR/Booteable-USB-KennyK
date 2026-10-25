@@ -1,0 +1,11 @@
+{
+  "appId": "app.isousb.booteable",
+  "appName": "ISO a USB",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#0f2a43"
+  }
+}
