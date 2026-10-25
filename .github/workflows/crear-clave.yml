@@ -1,0 +1,40 @@
+name: Crear clave de firma (ejecutar una sola vez)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clave:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Generar la clave
+        run: |
+          set -e
+          mkdir clave
+          PASS=$(openssl rand -hex 20)
+          keytool -genkeypair -storetype PKCS12 -keystore release.jks \
+            -alias isousb -keyalg RSA -keysize 4096 -validity 36500 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=ISO a USB, O=Personal, C=PY"
+          printf '%s' "$PASS" > clave/KEYSTORE_PASSWORD.txt
+          printf '%s' "isousb" > clave/KEY_ALIAS.txt
+          base64 -w0 release.jks > clave/KEYSTORE_BASE64.txt
+          echo "Huella pública de la clave (sirve para comprobar que no cambia):"
+          keytool -list -v -keystore release.jks -storepass "$PASS" | grep -E "SHA256"
+          rm release.jks
+
+      - name: Guardar los 3 valores como artefacto temporal
+        uses: actions/upload-artifact@v4
+        with:
+          name: clave-de-firma
+          path: clave/
+          retention-days: 1

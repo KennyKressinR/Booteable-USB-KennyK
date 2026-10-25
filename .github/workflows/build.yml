@@ -1,0 +1,208 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Descargar el repo
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Solo se usa si no hay clave propia en los secretos del repo
+      - name: Recuperar clave de depuración
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: debug-keystore-v1
+
+      - name: Leer versión
+        id: ver
+        run: echo "v=$(tr -d '[:space:]' < version.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Instalar dependencias y preparar la web
+        run: |
+          npm install --no-audit --no-fund
+          mkdir -p www
+          cp index.html www/index.html
+
+      - name: Crear el proyecto Android
+        run: npx cap add android
+
+      - name: Inyectar código nativo, permisos y Shizuku
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -e
+          APP_ID=$(node -p "require('./capacitor.config.json').appId")
+          export VER=$(tr -d '[:space:]' < version.txt)
+          DIR="android/app/src/main/java/$(echo "$APP_ID" | tr . /)"
+          for f in IsoUsbPlugin.java WinIso.java; do
+            cp "$f" "$DIR/$f"
+            sed -i "s/^package .*;/package $APP_ID;/" "$DIR/$f"
+          done
+          cat > "$DIR/MainActivity.java" <<JAVA
+          package $APP_ID;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(IsoUsbPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVA
+          python3 - <<'PY'
+          import os, re, pathlib
+          ver, run = os.environ['VER'], os.environ['RUN_NUMBER']
+
+          # Manifiesto: permisos, USB host, Shizuku
+          p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text(encoding='utf-8')
+          extra = (
+              '<uses-feature android:name="android.hardware.usb.host" android:required="false" />'
+              '<uses-permission android:name="android.permission.WAKE_LOCK" />'
+              '<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />'
+              '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />'
+              '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />'
+              '<uses-permission android:name="moe.shizuku.manager.permission.API_V23" />'
+              '<queries><package android:name="moe.shizuku.privileged.api" /></queries>'
+          )
+          provider = (
+              '<provider android:name="rikka.shizuku.ShizukuProvider" '
+              'android:authorities="${applicationId}.shizuku" android:enabled="true" '
+              'android:exported="true" android:multiprocess="false" '
+              'android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />'
+          )
+          s = s.replace('</application>', provider + '</application>', 1)
+          s = s.replace('</manifest>', extra + '</manifest>', 1)
+          p.write_text(s, encoding='utf-8')
+
+          # Gradle: Shizuku + versión de la app
+          g = pathlib.Path('android/app/build.gradle')
+          t = g.read_text(encoding='utf-8')
+          deps = ('dependencies {\n'
+                  '    implementation "dev.rikka.shizuku:api:13.1.5"\n'
+                  '    implementation "dev.rikka.shizuku:provider:13.1.5"')
+          t = re.sub(r'^dependencies\s*\{', deps, t, count=1, flags=re.M)
+          t = re.sub(r'versionCode \d+', 'versionCode ' + run, t)
+          t = re.sub(r'versionName "[^"]*"', 'versionName "' + ver + '"', t)
+          g.write_text(t, encoding='utf-8')
+
+          # SDK mínimo 26 (Shizuku) y target 34 (sin pantalla edge-to-edge forzada)
+          v = pathlib.Path('android/variables.gradle')
+          x = v.read_text(encoding='utf-8')
+          x = re.sub(r'minSdkVersion\s*=\s*\d+', 'minSdkVersion = 26', x)
+          x = re.sub(r'targetSdkVersion\s*=\s*\d+', 'targetSdkVersion = 34', x)
+          v.write_text(x, encoding='utf-8')
+          PY
+
+      # ---- Firma con tu propia clave (secretos del repositorio) ----
+      - name: Preparar la firma
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "on=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "on=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No hay secretos de firma (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS): se compila con la clave de depuración"
+          fi
+
+      - name: Configurar la firma en Gradle
+        if: steps.sign.outputs.on == 'true'
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          g = pathlib.Path('android/app/build.gradle')
+          t = g.read_text(encoding='utf-8')
+          block = ('android {\n'
+                   '    signingConfigs {\n'
+                   '        release {\n'
+                   '            storeFile file(System.getenv("KEYSTORE_PATH"))\n'
+                   '            storePassword System.getenv("KEYSTORE_PASSWORD")\n'
+                   '            keyAlias System.getenv("KEY_ALIAS")\n'
+                   '            keyPassword System.getenv("KEYSTORE_PASSWORD")\n'
+                   '        }\n'
+                   '    }\n'
+                   '    lint {\n'
+                   '        checkReleaseBuilds false\n'
+                   '        abortOnError false\n'
+                   '    }')
+          t, n1 = re.subn(r'^android\s*\{', block, t, count=1, flags=re.M)
+          t, n2 = re.subn(r'(buildTypes\s*\{\s*release\s*\{)', r'\1\n            signingConfig signingConfigs.release', t, count=1)
+          assert n1 == 1 and n2 == 1, 'No se pudo parchear build.gradle (%d, %d)' % (n1, n2)
+          g.write_text(t, encoding='utf-8')
+          PY
+
+      - name: Sincronizar Capacitor
+        run: npx cap sync android
+
+      - name: Compilar APK firmado (release)
+        if: steps.sign.outputs.on == 'true'
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Compilar APK de depuración
+        if: steps.sign.outputs.on != 'true'
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Nombrar el APK y mostrar la huella de la firma
+        env:
+          FIRMADO: ${{ steps.sign.outputs.on }}
+        run: |
+          if [ "$FIRMADO" = "true" ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk ISO-a-USB.apk
+          else
+            cp android/app/build/outputs/apk/debug/app-debug.apk ISO-a-USB.apk
+          fi
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$APKSIGNER" ]; then "$APKSIGNER" verify --print-certs ISO-a-USB.apk | grep -E "DN|SHA-256" || true; fi
+
+      - name: Guardar APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: ISO-a-USB-v${{ steps.ver.outputs.v }}
+          path: ISO-a-USB.apk
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          name: ISO a USB v${{ steps.ver.outputs.v }}
+          generate_release_notes: true
+          files: ISO-a-USB.apk
